@@ -84,6 +84,18 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
         },
     }
 
+    # Check if a secure cookies file is configured on Render
+    secrets_cookie = Path("/etc/secrets/cookies.txt")
+    if secrets_cookie.exists():
+        ydl_opts["cookiefile"] = str(secrets_cookie)
+        logger.info("[YT] Found secure cookies file at /etc/secrets/cookies.txt, applying to yt-dlp.")
+    else:
+        # Fallback to local cookie file if available for local testing
+        local_cookie = Path("cookies.txt")
+        if local_cookie.exists():
+            ydl_opts["cookiefile"] = str(local_cookie)
+            logger.info("[YT] Found local cookies.txt, applying to yt-dlp.")
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Single call — downloads AND captures info via progress hook.
