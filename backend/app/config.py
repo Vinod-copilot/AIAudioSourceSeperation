@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Set, List
+from typing import Set, List, Any
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     
     # CORS Origins — can be overridden via env var as a comma-separated list
     # e.g.  BACKEND_CORS_ORIGINS="https://your-app.vercel.app,http://localhost:5173"
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: Any = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
