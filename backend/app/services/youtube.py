@@ -87,8 +87,17 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
     # Check if a secure cookies file is configured on Render
     secrets_cookie = Path("/etc/secrets/cookies.txt")
     if secrets_cookie.exists():
-        ydl_opts["cookiefile"] = str(secrets_cookie)
-        logger.info("[YT] Found secure cookies file at /etc/secrets/cookies.txt, applying to yt-dlp.")
+        try:
+            import shutil
+            writable_cookie = Path("/tmp/cookies.txt")
+            # Ensure the directory exists and copy the file
+            writable_cookie.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(secrets_cookie, writable_cookie)
+            ydl_opts["cookiefile"] = str(writable_cookie)
+            logger.info("[YT] Secure cookies copied to writable path: /tmp/cookies.txt")
+        except Exception as copy_err:
+            logger.error(f"[YT] Failed to copy cookies to /tmp: {copy_err}. Falling back to direct read.")
+            ydl_opts["cookiefile"] = str(secrets_cookie)
     else:
         # Fallback to local cookie file if available for local testing
         local_cookie = Path("cookies.txt")
