@@ -51,7 +51,8 @@ settings = Settings()
 # parse it into a proper list (Pydantic v2 does not auto-split strings).
 _raw_cors = os.environ.get("BACKEND_CORS_ORIGINS", "")
 if _raw_cors:
-    settings.BACKEND_CORS_ORIGINS = [o.strip() for o in _raw_cors.split(",") if o.strip()]
+    # Strip whitespace and trailing slashes so both 'https://domain.com/' and 'https://domain.com' match the browser Origin header
+    settings.BACKEND_CORS_ORIGINS = [o.strip().rstrip("/") for o in _raw_cors.split(",") if o.strip()]
 
 # Ensure directories exist
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
