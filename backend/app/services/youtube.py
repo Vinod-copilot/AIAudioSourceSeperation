@@ -2,6 +2,7 @@ import uuid
 import time
 import logging
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import yt_dlp
 
 logger = logging.getLogger("uvicorn")
@@ -23,6 +24,21 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
     """
     file_id = str(uuid.uuid4())
     t_start = time.monotonic()
+
+    # ── URL Sanitization ─────────────────────────────────────────────────────
+    # Strip playlist/radio query params that cause yt-dlp to resolve an entire
+    # playlist before downloading, adding ~30s of unnecessary delay.
+    # We keep only `v` (video ID) and `t` (timestamp) parameters.
+    _KEEP_PARAMS = {"v", "t"}
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query, keep_blank_values=True)
+    filtered_qs = {k: v for k, v in qs.items() if k in _KEEP_PARAMS}
+    clean_url = urlunparse(parsed._replace(query=urlencode(filtered_qs, doseq=True)))
+    if clean_url != url:
+        logger.info(f"[YT] Stripped playlist params. Clean URL: {clean_url}")
+    url = clean_url
+    # ─────────────────────────────────────────────────────────────────────────
+
     logger.info(f"[YT] Starting download | file_id={file_id} | url={url}")
 
     temp_template = str(output_dir / f"{file_id}_temp.%(ext)s")
@@ -53,6 +69,7 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
             "preferredquality": "320",   # 320 kbps MP3
         }],
         # Speed improvements
+        "noplaylist": True,              # CRITICAL: never expand playlists/radios
         "concurrent_fragment_downloads": 4,  # parallel DASH/HLS segment fetch
         "prefer_ffmpeg": True,               # always use system FFmpeg
         "quiet": True,
