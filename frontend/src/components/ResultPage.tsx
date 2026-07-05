@@ -273,9 +273,16 @@ export const ResultPage: React.FC<ResultPageProps> = ({ jobId, onBack }) => {
           <button className="btn btn-secondary" onClick={onBack} aria-label="Back">
             <ArrowLeft size={16} />
           </button>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h2 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Separation Workspace</h2>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{job.filename}</p>
+            <p style={{
+              fontSize: '0.9rem',
+              color: 'var(--text-secondary)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: '420px',
+            }} title={job.filename}>{job.filename}</p>
           </div>
         </div>
 

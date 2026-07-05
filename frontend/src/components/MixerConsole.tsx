@@ -414,11 +414,17 @@ export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, 
 
       {/* Mixer Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '2rem' }}>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <span className="status-badge" style={{ background: 'var(--primary-glow)', color: '#fff', marginBottom: '0.5rem', border: 'none' }}>
             <Zap size={10} fill="#fff" /> Synchronized DJ Mixer
           </span>
-          <h3 style={{ fontSize: '1.4rem' }}>{title}</h3>
+          <h3 style={{
+            fontSize: '1.4rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: '100%',
+          }} title={title}>{title}</h3>
         </div>
 
         {/* Bypass Mode Selector */}
