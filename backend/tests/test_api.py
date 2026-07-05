@@ -44,3 +44,27 @@ def test_list_jobs():
     response = client.get("/api/jobs")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+def test_import_youtube_empty_url():
+    """Verify that importing an empty URL returns a 400 Bad Request error."""
+    response = client.post("/api/import/youtube", json={"url": "   "})
+    assert response.status_code == 400
+    assert "YouTube URL is empty" in response.json()["detail"]
+
+def test_import_youtube_success():
+    """Verify importing a YouTube URL successfully mocks the download process."""
+    from unittest.mock import patch
+    mock_result = {
+        "file_id": "test-youtube-id",
+        "filename": "test_video.mp3",
+        "size": 12345
+    }
+    with patch("app.routes.api.download_youtube_audio", return_value=mock_result):
+        response = client.post("/api/import/youtube", json={"url": "https://www.youtube.com/watch?v=mock"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["file_id"] == "test-youtube-id"
+        assert data["filename"] == "test_video.mp3"
+        assert data["size"] == 12345
+        assert "imported and converted" in data["message"]
+

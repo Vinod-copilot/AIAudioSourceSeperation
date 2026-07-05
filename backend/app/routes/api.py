@@ -1,14 +1,16 @@
 import os
 import uuid
 import logging
+import asyncio
 from typing import List
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
 from app.config import settings
 from app.models import (
-    UploadResponse, SeparateRequest, SeparateResponse, JobStatusResponse, Job
+    UploadResponse, YoutubeImportRequest, SeparateRequest, SeparateResponse, JobStatusResponse, Job
 )
 from app.services.storage import storage_provider
 from app.services.job_manager import job_manager
+from app.services.youtube import download_youtube_audio
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter()
@@ -70,6 +72,36 @@ async def upload_audio_file(file: UploadFile = File(...)):
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error during upload: {str(e)}"
+        )
+
+@router.post("/import/youtube", response_model=UploadResponse)
+async def import_youtube_audio(request: YoutubeImportRequest):
+    """
+    Downloads audio from a YouTube URL, converts it to 320kbps MP3 via FFmpeg,
+    and registers it as an uploaded file.
+    """
+    url = request.url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="YouTube URL is empty.")
+    
+    # Check if storage directory exists
+    uploads_dir = settings.STORAGE_DIR / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Run yt-dlp downloading in a threadpool so it doesn't block the FastAPI async event loop
+        result = await asyncio.to_thread(download_youtube_audio, url, uploads_dir)
+        return UploadResponse(
+            file_id=result["file_id"],
+            filename=result["filename"],
+            size=result["size"],
+            message="YouTube audio imported and converted to 320kbps MP3 successfully"
+        )
+    except Exception as e:
+        logger.error(f"Error importing from YouTube: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to import audio from YouTube: {str(e)}"
         )
 
 @router.post("/separate", response_model=SeparateResponse)

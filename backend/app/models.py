@@ -36,6 +36,9 @@ class UploadResponse(BaseModel):
     size: int
     message: str = "File uploaded successfully"
 
+class YoutubeImportRequest(BaseModel):
+    url: str
+
 class SeparateRequest(BaseModel):
     file_id: str
     model_type: Optional[str] = "demucs"

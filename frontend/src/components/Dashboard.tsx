@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { UploadZone } from './UploadZone';
 import { apiClient, Job, JobStatus } from '../services/api';
-import { Play, Music, AlertCircle, Loader2, FileText, CheckCircle2, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { Play, Music, AlertCircle, Loader2, FileText, ChevronDown, ChevronRight, Trash2, Youtube } from 'lucide-react';
+
 
 interface DashboardProps {
   onViewJob: (jobId: string) => void;
@@ -12,7 +13,10 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDeductCredits, onOpenTopUp }) => {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [uploadedFile, setUploadedFile] = useState<{ id: string; name: string } | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<{ id: string; name: string; source?: 'upload' | 'youtube'; size?: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<'upload' | 'youtube'>('upload');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>('ensemble');
   const [selectedStems, setSelectedStems] = useState<number>(2);
   const [vocalCleanup, setVocalCleanup] = useState(false);
@@ -66,8 +70,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
 
   const handleUploadSuccess = (fileId: string, filename: string) => {
     console.log("Dashboard: handleUploadSuccess received fileId:", fileId, "filename:", filename);
-    setUploadedFile({ id: fileId, name: filename });
+    setUploadedFile({ id: fileId, name: filename, source: 'upload' });
     setError(null);
+  };
+
+  const handleYoutubeImport = async () => {
+    if (!youtubeUrl.trim()) return;
+    setIsImporting(true);
+    setError(null);
+    try {
+      const response = await apiClient.importYoutube(youtubeUrl);
+      setUploadedFile({
+        id: response.file_id,
+        name: response.filename,
+        source: 'youtube',
+        size: response.size
+      });
+      setYoutubeUrl('');
+    } catch (err: any) {
+      console.error('Failed to import YouTube audio:', err);
+      setError(err.message || 'Failed to import audio from YouTube. Please check the URL and try again.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const triggerSeparation = async () => {
@@ -85,17 +110,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
     // Optimistically add a placeholder job so the user sees it immediately
     const optimisticJob: Job = {
       job_id: 'pending-' + Date.now(),
+      file_id: uploadedFile.id,
       filename: uploadedFile.name,
       status: 'QUEUED' as JobStatus,
       model_type: selectedModel,
       stems: selectedStems,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      error_message: null,
+      vocals_ready: false,
+      instrumental_ready: false,
     };
     setJobs(prev => [optimisticJob, ...prev]);
     
     try {
-      const response = await apiClient.triggerSeparate(uploadedFile.id, selectedModel, selectedStems, vocalCleanup, instrumentalCleanup);
+      await apiClient.triggerSeparate(uploadedFile.id, selectedModel, selectedStems, vocalCleanup, instrumentalCleanup);
       onDeductCredits();
       setUploadedFile(null);
       setVocalCleanup(false);
@@ -169,41 +198,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
     return 0;
   };
 
-  const formatStatus = (job: Job) => {
-    switch (job.status) {
-      case 'QUEUED':
-        return <span className="status-badge status-queued">Queued (5%)</span>;
-      case 'PROCESSING': {
-        const progress = calcProgress(job);
-        return (
-          <span className="status-badge status-processing">
-            <Loader2 size={12} className="spinning" style={{ marginRight: '4px' }} />
-            Processing ({progress}%)
-          </span>
-        );
-      }
-      case 'COMPLETED':
-        return <span className="status-badge status-completed">Completed</span>;
-      case 'FAILED':
-        return <span className="status-badge status-failed">Failed</span>;
-      default:
-        return <span className="status-badge">{job.status}</span>;
-    }
-  };
 
-  const formatDate = (isoString: string) => {
-    try {
-      const date = new Date(parseDateSafe(isoString));
-      return date.toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch (e) {
-      return isoString;
-    }
-  };
 
   return (
     <div className="dashboard-grid">
@@ -215,10 +210,207 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
             Separate New Audio
           </h2>
           
-          <UploadZone 
-            onUploadSuccess={handleUploadSuccess} 
-            onClear={() => setUploadedFile(null)} 
-          />
+          {!uploadedFile ? (
+            <>
+              {/* Tabs for Upload or YouTube */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', padding: '0.25rem', background: 'rgba(255, 255, 255, 0.03)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('upload');
+                    setError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.6rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: activeTab === 'upload' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    color: activeTab === 'upload' ? 'var(--text-primary)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Music size={16} />
+                  Upload File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('youtube');
+                    setError(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.6rem',
+                    borderRadius: '6px',
+                    border: 'none',
+                    background: activeTab === 'youtube' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                    color: activeTab === 'youtube' ? 'var(--text-primary)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <Youtube size={16} style={{ color: activeTab === 'youtube' ? '#ff0000' : 'var(--text-muted)' }} />
+                  YouTube URL
+                </button>
+              </div>
+
+              {activeTab === 'upload' ? (
+                <UploadZone 
+                  onUploadSuccess={handleUploadSuccess} 
+                  onClear={() => setUploadedFile(null)} 
+                />
+              ) : (
+                <div className="youtube-import-zone" style={{
+                  border: '2px dashed rgba(255, 255, 255, 0.15)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '3rem 2rem',
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '1rem',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <div style={{
+                    width: '4.5rem',
+                    height: '4.5rem',
+                    borderRadius: '50%',
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto'
+                  }}>
+                    <Youtube size={36} style={{ color: '#ff0000' }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Import from YouTube</p>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Downloads & converts video audio to high-quality 320 kbps MP3
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', width: '100%' }}>
+                    <input
+                      type="text"
+                      placeholder="Paste YouTube Video URL..."
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      disabled={isImporting}
+                      style={{
+                        flex: 1,
+                        padding: '0.75rem',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '6px',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.9rem',
+                        outline: 'none',
+                        minWidth: 0,
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleYoutubeImport}
+                      disabled={isImporting || !youtubeUrl.trim()}
+                      style={{ padding: '0.75rem 1.25rem' }}
+                    >
+                      {isImporting ? (
+                        <Loader2 className="spinning" size={16} />
+                      ) : (
+                        'Import'
+                      )}
+                    </button>
+                  </div>
+                  
+                  {isImporting && (
+                    <div style={{ fontSize: '0.8rem', color: 'var(--secondary-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '0.5rem' }}>
+                      <Loader2 className="spinning" size={12} />
+                      Downloading and converting audio... This may take a minute.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="selected-file-card" style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '1rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+                <div style={{
+                  width: '2.5rem',
+                  height: '2.5rem',
+                  borderRadius: '8px',
+                  background: uploadedFile.source === 'youtube' ? 'rgba(255, 0, 0, 0.1)' : 'rgba(138, 43, 226, 0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  {uploadedFile.source === 'youtube' ? (
+                    <Youtube size={20} style={{ color: '#ff0000' }} />
+                  ) : (
+                    <Music size={20} style={{ color: 'var(--primary-accent)' }} />
+                  )}
+                </div>
+                <div style={{ minWidth: 0, textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={uploadedFile.name}>
+                    {uploadedFile.name}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--secondary-accent)', marginTop: '0.15rem' }}>
+                    {uploadedFile.source === 'youtube' ? 'YouTube Imported' : 'File Uploaded'}
+                    {uploadedFile.size ? ` • ${(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB` : ''}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadedFile(null);
+                  setYoutubeUrl('');
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--danger)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0.35rem',
+                  borderRadius: '6px',
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(244, 67, 54, 0.15)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                title="Remove selection"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          )}
 
           <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.25rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
               

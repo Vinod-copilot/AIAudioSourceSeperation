@@ -91,6 +91,26 @@ export const apiClient = {
   },
 
   /**
+   * Imports an audio file by downloading a YouTube video URL and converting it to MP3.
+   */
+  async importYoutube(url: string): Promise<UploadResponse> {
+    const response = await fetch(`${BASE_URL}/import/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Failed to import audio from YouTube.');
+    }
+
+    return response.json();
+  },
+
+  /**
    * Triggers the separation backend task for a given fileId, modelType, stems count, and vocalCleanup.
    */
   async triggerSeparate(fileId: string, modelType: string = 'demucs', stems: number = 2, vocalCleanup: boolean = false, instrumentalCleanup: boolean = false): Promise<SeparateResponse> {
