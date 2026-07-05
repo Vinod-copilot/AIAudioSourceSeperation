@@ -42,8 +42,11 @@ export interface SeparateResponse {
   message: string;
 }
 
-// We use relative paths so Vite's proxy forwards requests to the correct host/port.
-const BASE_URL = '/api';
+// Determine API base URL. If VITE_BACKEND_URL is set (production), use it directly.
+// Otherwise, use relative path (which local Vite dev proxy forwards to localhost:8000).
+const rawBackendUrl = (import.meta.env.VITE_BACKEND_URL || '').trim().replace(/\/+$/, '');
+export const BASE_URL = rawBackendUrl ? `${rawBackendUrl}/api` : '/api';
+
 
 export const apiClient = {
   /**

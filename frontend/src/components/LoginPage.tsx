@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, User, Music2, AlertCircle } from 'lucide-react';
+import { BASE_URL } from '../services/api';
 
 interface LoginPageProps {
   onLoginSuccess: (profile: { name: string; email: string; avatarUrl?: string }) => void;
@@ -30,7 +31,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
       setError(null);
 
       try {
-        const res = await fetch('/api/auth/google', {
+        const res = await fetch(`${BASE_URL}/auth/google`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
