@@ -2,6 +2,12 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, RotateCcw, Volume2, VolumeX, Download, Disc, Sliders, Music, Zap, Loader2, Check, AlertCircle } from 'lucide-react';
 import { apiClient } from '../services/api';
 
+/** Strips the file extension and trims to 30 chars, appending '…' if cut. */
+const trimName = (name: string, max = 30): string => {
+  const stem = name.replace(/\.[^.]+$/, '');
+  return stem.length > max ? stem.slice(0, max) + '…' : stem;
+};
+
 const GoogleDriveIcon = ({ size = 16 }: { size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
     <path d="M7.71 3.5H16.29L22 13.5H13.42L7.71 3.5Z" fill="#FFD04B" />
@@ -424,7 +430,7 @@ export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, 
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             maxWidth: '100%',
-          }} title={title}>{title}</h3>
+          }} title={title}>{trimName(title)}</h3>
         </div>
 
         {/* Bypass Mode Selector */}

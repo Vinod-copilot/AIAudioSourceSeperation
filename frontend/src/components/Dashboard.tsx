@@ -3,6 +3,23 @@ import { UploadZone } from './UploadZone';
 import { apiClient, Job, JobStatus } from '../services/api';
 import { Play, Music, AlertCircle, Loader2, FileText, ChevronDown, ChevronRight, Trash2, Youtube } from 'lucide-react';
 
+/** Strips the file extension and trims to 30 chars, appending '…' if cut. */
+const trimName = (name: string, max = 30): string => {
+  const stem = name.replace(/\.[^.]+$/, ''); // remove extension
+  return stem.length > max ? stem.slice(0, max) + '…' : stem;
+};
+
+/** Returns true if the string is a valid YouTube video URL. */
+const isValidYoutubeUrl = (url: string): boolean => {
+  try {
+    const u = new URL(url.trim());
+    const isYTDomain = u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com' || u.hostname === 'youtu.be' || u.hostname === 'm.youtube.com';
+    const hasVideoId = u.searchParams.has('v') || u.pathname.startsWith('/shorts/') || (u.hostname === 'youtu.be' && u.pathname.length > 1);
+    return isYTDomain && hasVideoId;
+  } catch {
+    return false;
+  }
+};
 
 interface DashboardProps {
   onViewJob: (jobId: string) => void;
@@ -75,11 +92,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
   };
 
   const handleYoutubeImport = async () => {
-    if (!youtubeUrl.trim()) return;
+    const trimmedUrl = youtubeUrl.trim();
+    if (!trimmedUrl) return;
+
+    // Client-side URL validation before hitting the backend
+    if (!isValidYoutubeUrl(trimmedUrl)) {
+      setError('Please enter a valid YouTube video URL (e.g. https://www.youtube.com/watch?v=...).');
+      return;
+    }
+
     setIsImporting(true);
     setError(null);
     try {
-      const response = await apiClient.importYoutube(youtubeUrl);
+      const response = await apiClient.importYoutube(trimmedUrl);
       setUploadedFile({
         id: response.file_id,
         name: response.filename,
@@ -377,8 +402,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
                   )}
                 </div>
                 <div style={{ minWidth: 0, textAlign: 'left' }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={uploadedFile.name}>
-                    {uploadedFile.name}
+                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={uploadedFile.name}>
+                    {trimName(uploadedFile.name)}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--secondary-accent)', marginTop: '0.15rem' }}>
                     {uploadedFile.source === 'youtube' ? 'YouTube Imported' : 'File Uploaded'}
@@ -716,7 +741,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onViewJob, credits, onDedu
                       {/* File name + status line */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {job.filename}
+                          {trimName(job.filename)}
                         </div>
                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                           {statusLine}
