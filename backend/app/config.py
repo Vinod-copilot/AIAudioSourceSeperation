@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Set
+from typing import Set, List
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -31,9 +31,10 @@ class Settings(BaseSettings):
     MODAL_TOKEN_SECRET: str = ""
     MODAL_GPU_TYPE: str = "t4"
     
-    # CORS Origins
-    BACKEND_CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",  # Vite default
+    # CORS Origins — can be overridden via env var as a comma-separated list
+    # e.g.  BACKEND_CORS_ORIGINS="https://your-app.vercel.app,http://localhost:5173"
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://localhost",
@@ -46,7 +47,14 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# If BACKEND_CORS_ORIGINS was provided as a comma-separated string via env var,
+# parse it into a proper list (Pydantic v2 does not auto-split strings).
+_raw_cors = os.environ.get("BACKEND_CORS_ORIGINS", "")
+if _raw_cors:
+    settings.BACKEND_CORS_ORIGINS = [o.strip() for o in _raw_cors.split(",") if o.strip()]
+
 # Ensure directories exist
 settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+
