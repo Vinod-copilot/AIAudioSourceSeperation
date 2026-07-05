@@ -1,0 +1,238 @@
+{
+  "info": {
+    "name": "AI Audio Separation API",
+    "description": "Collection containing requests for testing the AI Audio Separation API, including file uploads, job triggering, and file downloads.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "System Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Upload Audio (MP3)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Select an MP3 file (under 100MB)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/upload",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "upload"
+          ]
+        },
+        "description": "Uploads an MP3 file and returns a unique `file_id`."
+      },
+      "response": []
+    },
+    {
+      "name": "Trigger Audio Separation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"file_id\": \"your-file-id-here\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/separate",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "separate"
+          ]
+        },
+        "description": "Starts the async Demucs separation job using Modal GPU. Returns a `job_id`."
+      },
+      "response": []
+    },
+    {
+      "name": "Check Separation Job Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/job/{{job_id}}",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "job",
+            "{{job_id}}"
+          ]
+        },
+        "description": "Retrieves the status of the separation job (QUEUED, PROCESSING, COMPLETED, FAILED)."
+      },
+      "response": []
+    },
+    {
+      "name": "List All Jobs",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/jobs",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "jobs"
+          ]
+        },
+        "description": "Lists history of all jobs run on this server."
+      },
+      "response": []
+    },
+    {
+      "name": "Download Vocals Track",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/download/{{job_id}}/vocals?download=true",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "download",
+            "{{job_id}}",
+            "vocals"
+          ],
+          "query": [
+            {
+              "key": "download",
+              "value": "true",
+              "description": "Set to true to download as attachment instead of streaming inline"
+            }
+          ]
+        },
+        "description": "Downloads the separated vocals MP3 file for a completed job."
+      },
+      "response": []
+    },
+    {
+      "name": "Download Instrumental Track",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/download/{{job_id}}/instrumental?download=true",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "download",
+            "{{job_id}}",
+            "instrumental"
+          ],
+          "query": [
+            {
+              "key": "download",
+              "value": "true",
+              "description": "Set to true to download as attachment instead of streaming inline"
+            }
+          ]
+        },
+        "description": "Downloads the separated instrumental MP3 backing track."
+      },
+      "response": []
+    },
+    {
+      "name": "Stream Original Audio",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/download/{{job_id}}/original",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "download",
+            "{{job_id}}",
+            "original"
+          ]
+        },
+        "description": "Streams the original uploaded MP3 file."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "paste-job-id-here",
+      "type": "string"
+    }
+  ]
+}

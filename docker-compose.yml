@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/data
+    environment:
+      # Set to 'false' to use remote Modal GPU functions.
+      # When false, you must populate MODAL_TOKEN_ID and MODAL_TOKEN_SECRET.
+      - MOCK_MODAL=true
+      # Modal secrets (uncomment and populate to call Modal from inside Docker)
+      # - MODAL_TOKEN_ID=ak-xxxxxxxxxxxxxxx
+      # - MODAL_TOKEN_SECRET=as-xxxxxxxxxxxxxxx
+      # - MODAL_GPU_TYPE=t4
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  backend-data:

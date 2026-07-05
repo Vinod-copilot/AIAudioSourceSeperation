@@ -1,0 +1,52 @@
+import os
+from pathlib import Path
+from typing import Set
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    # App Settings
+    PROJECT_NAME: str = "AI Audio Separation API"
+    API_V1_STR: str = "/api"
+    
+    # Storage Configuration
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent
+    DATA_DIR: Path = BASE_DIR / "data"
+    
+    # Upload & Storage locations
+    UPLOAD_DIR: Path = DATA_DIR / "uploads"
+    STORAGE_DIR: Path = DATA_DIR / "storage"
+    JOBS_FILE: Path = DATA_DIR / "jobs.json"
+    
+    # File Limits
+    MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100 MB
+    ALLOWED_EXTENSIONS: Set[str] = {".mp3"}
+    
+    # Modal Configuration
+    MODAL_APP_NAME: str = "demucs-audio-separation"
+    MODAL_FUNCTION_NAME: str = "separate"
+    
+    # Credentials & GPU config
+    MOCK_MODAL: bool = False
+    MODAL_TOKEN_ID: str = ""
+    MODAL_TOKEN_SECRET: str = ""
+    MODAL_GPU_TYPE: str = "t4"
+    
+    # CORS Origins
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",  # Vite default
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://localhost",
+    ]
+
+    class Config:
+        case_sensitive = True
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
+
+# Ensure directories exist
+settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
