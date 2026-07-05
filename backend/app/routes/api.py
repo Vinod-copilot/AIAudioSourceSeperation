@@ -51,13 +51,13 @@ async def upload_audio_file(file: UploadFile = File(...)):
         # Generate a unique file ID
         file_id = str(uuid.uuid4())
 
-        # Truncate display filename stem to 100 chars, keeping the extension
-        MAX_NAME = 100
+        # Truncate display filename stem to 30 chars, keeping the extension
+        MAX_NAME = 30
         name_stem, name_ext = os.path.splitext(filename)
         if len(name_stem) > MAX_NAME:
             name_stem = name_stem[:MAX_NAME]
             filename = name_stem + name_ext
-            logger.info(f"Filename truncated to 100 chars: {filename}")
+            logger.info(f"Filename truncated to 30 chars: {filename}")
 
         storage_filename = f"{file_id}_{filename}"
         
@@ -103,14 +103,14 @@ async def import_youtube_audio(request: YoutubeImportRequest):
         # Run yt-dlp downloading in a threadpool so it doesn't block the FastAPI async event loop
         result = await asyncio.to_thread(download_youtube_audio, url, uploads_dir)
 
-        # Truncate display filename stem to 100 chars, keeping the extension
-        MAX_NAME = 100
+        # Truncate display filename stem to 30 chars, keeping the extension
+        MAX_NAME = 30
         yt_filename = result["filename"]
         yt_stem, yt_ext = os.path.splitext(yt_filename)
         if len(yt_stem) > MAX_NAME:
             yt_stem = yt_stem[:MAX_NAME]
             yt_filename = yt_stem + yt_ext
-            logger.info(f"[YT] Filename truncated to 100 chars: {yt_filename}")
+            logger.info(f"[YT] Filename truncated to 30 chars: {yt_filename}")
 
         return UploadResponse(
             file_id=result["file_id"],
