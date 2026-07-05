@@ -75,6 +75,13 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [_progress_hook],
+        # Extractor arguments to bypass bot/login checks on cloud hosts (e.g. Render)
+        # by mimicking official mobile clients (android, ios).
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios"]
+            }
+        },
     }
 
     try:
