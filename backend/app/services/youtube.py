@@ -1,4 +1,5 @@
 import uuid
+import time
 import logging
 from pathlib import Path
 import yt_dlp
@@ -10,70 +11,106 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
     Downloads the audio from a YouTube video URL using yt-dlp,
     extracts the audio, converts it to 320kbps MP3 using FFmpeg,
     and saves it to the output_dir.
+
+    Optimisations applied:
+    - Single-pass: info extraction is piggybacked on the download itself
+      (no separate `download=False` pre-fetch) via an `info_dict` capture
+      in the progress hook, eliminating one full round-trip to YouTube.
+    - Format selector prefers audio-only streams (m4a/webm/opus) so FFmpeg
+      does not have to demux a video container before re-encoding.
+    - Concurrent fragment downloads (4 workers) speed up DASH/HLS streams.
+    - prefer_ffmpeg ensures the fast system FFmpeg is always used.
     """
     file_id = str(uuid.uuid4())
-    logger.info(f"Starting YouTube download for URL: {url} with file_id: {file_id}")
-    
-    # We download as a temporary filename so we can rename it easily after post-processing
+    t_start = time.monotonic()
+    logger.info(f"[YT] Starting download | file_id={file_id} | url={url}")
+
     temp_template = str(output_dir / f"{file_id}_temp.%(ext)s")
-    
+
+    # Capture the info dict when yt-dlp fires the 'finished' progress hook
+    # so we can read the video title without a separate pre-fetch call.
+    captured_info: dict = {}
+
+    def _progress_hook(d: dict) -> None:
+        if d.get("status") == "finished" and not captured_info:
+            captured_info.update(d.get("info_dict") or {})
+            elapsed = time.monotonic() - t_start
+            logger.info(f"[YT] Download finished in {elapsed:.1f}s — starting FFmpeg conversion…")
+        elif d.get("status") == "downloading":
+            pct = d.get("_percent_str", "?").strip()
+            speed = d.get("_speed_str", "?").strip()
+            eta = d.get("_eta_str", "?").strip()
+            logger.info(f"[YT] Progress: {pct}  speed={speed}  ETA={eta}")
+
     ydl_opts = {
-        'format': 'bestaudio/best',
-        'outtmpl': temp_template,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '320', # 320 kbps MP3
+        # Prefer audio-only streams (no video data to download/demux).
+        # Falls back to best available if no audio-only stream exists.
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+        "outtmpl": temp_template,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "320",   # 320 kbps MP3
         }],
-        'quiet': True,
-        'no_warnings': True,
+        # Speed improvements
+        "concurrent_fragment_downloads": 4,  # parallel DASH/HLS segment fetch
+        "prefer_ffmpeg": True,               # always use system FFmpeg
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [_progress_hook],
     }
-    
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Extract video metadata to get a friendly filename title
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'youtube_audio')
-            
-            # Sanitize the title to make it a safe filename
-            clean_title = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-', '.')).strip()
-            clean_title = clean_title.replace(' ', '_')
-            if not clean_title:
-                clean_title = "youtube_audio"
-            
-            # Perform actual download and post-processing (conversion to MP3 via FFmpeg)
-            ydl.download([url])
-            
-        # The post-processor converts the audio and names it as f"{file_id}_temp.mp3"
+            # Single call — downloads AND captures info via progress hook.
+            # extract_info(download=True) returns the full info dict too.
+            info = ydl.extract_info(url, download=True)
+            # Merge whatever extract_info returned (may differ from hook capture)
+            if info:
+                captured_info.update(info)
+
+        title = captured_info.get("title", "youtube_audio")
+
+        # Sanitize title to a safe filename
+        clean_title = "".join(
+            c for c in title if c.isalnum() or c in (" ", "_", "-", ".")
+        ).strip().replace(" ", "_")
+        if not clean_title:
+            clean_title = "youtube_audio"
+
+        # The FFmpeg post-processor writes: {file_id}_temp.mp3
         temp_file = output_dir / f"{file_id}_temp.mp3"
         final_filename = f"{file_id}_{clean_title}.mp3"
         final_file = output_dir / final_filename
-        
+
         if temp_file.exists():
             temp_file.rename(final_file)
         else:
-            # Fallback check in case the file extension wasn't .mp3 for some reason
-            matching_files = list(output_dir.glob(f"{file_id}_temp.*"))
-            if matching_files:
-                matching_files[0].rename(final_file)
+            matching = list(output_dir.glob(f"{file_id}_temp.*"))
+            if matching:
+                matching[0].rename(final_file)
             else:
-                raise FileNotFoundError("yt-dlp downloaded the file, but the post-processed file could not be found.")
-        
+                raise FileNotFoundError(
+                    "yt-dlp completed but the post-processed MP3 could not be found."
+                )
+
         file_size = final_file.stat().st_size
-        logger.info(f"YouTube download complete. Saved as {final_filename} (Size: {file_size} bytes)")
-        
+        total_time = time.monotonic() - t_start
+        logger.info(
+            f"[YT] Done in {total_time:.1f}s | file={final_filename} | size={file_size:,} bytes"
+        )
+
         return {
             "file_id": file_id,
             "filename": f"{clean_title}.mp3",
-            "size": file_size
+            "size": file_size,
         }
-        
+
     except Exception as e:
-        logger.error(f"Failed to download/convert YouTube audio: {str(e)}")
-        # Clean up any leftover temporary files if they exist
-        for temp_leftover in output_dir.glob(f"{file_id}_temp.*"):
+        logger.error(f"[YT] Failed to download/convert: {e}")
+        for leftover in output_dir.glob(f"{file_id}_temp.*"):
             try:
-                temp_leftover.unlink()
+                leftover.unlink()
             except Exception:
                 pass
-        raise RuntimeError(f"YouTube import failed: {str(e)}")
+        raise RuntimeError(f"YouTube import failed: {e}")
