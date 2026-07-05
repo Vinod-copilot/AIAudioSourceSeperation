@@ -75,17 +75,12 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [_progress_hook],
-        # Extractor arguments to bypass bot/login checks on cloud hosts (e.g. Render)
-        # by mimicking official mobile clients (android, ios).
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "ios"]
-            }
-        },
     }
 
     # Check if a secure cookies file is configured on Render
     secrets_cookie = Path("/etc/secrets/cookies.txt")
+    use_cookies = False
+
     if secrets_cookie.exists():
         try:
             import shutil
@@ -94,16 +89,28 @@ def download_youtube_audio(url: str, output_dir: Path) -> dict:
             writable_cookie.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(secrets_cookie, writable_cookie)
             ydl_opts["cookiefile"] = str(writable_cookie)
+            use_cookies = True
             logger.info("[YT] Secure cookies copied to writable path: /tmp/cookies.txt")
         except Exception as copy_err:
             logger.error(f"[YT] Failed to copy cookies to /tmp: {copy_err}. Falling back to direct read.")
             ydl_opts["cookiefile"] = str(secrets_cookie)
+            use_cookies = True
     else:
         # Fallback to local cookie file if available for local testing
         local_cookie = Path("cookies.txt")
         if local_cookie.exists():
             ydl_opts["cookiefile"] = str(local_cookie)
+            use_cookies = True
             logger.info("[YT] Found local cookies.txt, applying to yt-dlp.")
+
+    # Only spoof mobile clients if we are NOT using cookies.
+    # Spoofing mobile clients while using browser session cookies causes authentication mismatches.
+    if not use_cookies:
+        ydl_opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "ios"]
+            }
+        }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
