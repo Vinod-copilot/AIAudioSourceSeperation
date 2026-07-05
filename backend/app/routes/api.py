@@ -6,11 +6,13 @@ from typing import List
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
 from app.config import settings
 from app.models import (
-    UploadResponse, YoutubeImportRequest, SeparateRequest, SeparateResponse, JobStatusResponse, Job
+    UploadResponse, YoutubeImportRequest, SeparateRequest, SeparateResponse, JobStatusResponse, Job,
+    GoogleDriveUploadRequest, GoogleDriveUploadResponse
 )
 from app.services.storage import storage_provider
 from app.services.job_manager import job_manager
 from app.services.youtube import download_youtube_audio
+from app.services.drive import upload_file_to_google_drive
 
 logger = logging.getLogger("uvicorn")
 router = APIRouter()
@@ -207,3 +209,83 @@ async def list_all_jobs():
     Returns list of all active/completed jobs.
     """
     return job_manager.list_jobs()
+
+@router.post("/job/{jobId}/upload-to-drive", response_model=GoogleDriveUploadResponse)
+async def upload_job_track_to_drive(jobId: str, request: GoogleDriveUploadRequest):
+    """
+    Uploads a specific audio stem track from a completed job to Google Drive
+    using the user's Google OAuth2 access token.
+    """
+    job = job_manager.get_job(jobId)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+        
+    if job.status != "COMPLETED":
+        raise HTTPException(status_code=400, detail="Separation job has not completed yet.")
+        
+    track = request.track.lower()
+    
+    # Resolve the track's local storage path from the job metadata
+    track_path_key = None
+    if track == "vocals":
+        track_path_key = job.vocals_path
+    elif track == "backing_vocals":
+        track_path_key = job.backing_vocals_path
+    elif track == "instrumental":
+        track_path_key = job.instrumental_path
+    elif track == "drums":
+        track_path_key = job.drums_path
+    elif track == "bass":
+        track_path_key = job.bass_path
+    elif track == "other":
+        track_path_key = job.other_path
+    elif track == "original":
+        track_path_key = job.original_path
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid track type '{track}'.")
+        
+    if not track_path_key:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Requested track '{track}' was not generated or is not ready."
+        )
+        
+    try:
+        # Resolve the full file path from the storage provider
+        full_file_path = storage_provider.get_file_path(track_path_key)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Track file for '{track}' could not be found on storage."
+        )
+        
+    # Construct a friendly display filename: e.g. "my_song_vocals.mp3"
+    orig_name_sans_ext = os.path.splitext(job.filename)[0]
+    ext = full_file_path.suffix
+    display_filename = f"{orig_name_sans_ext}_{track}{ext}"
+    
+    # Determine if we should mock the upload based on access token or configuration
+    is_mock = settings.MOCK_MODAL or request.access_token.startswith("mock-") or not os.getenv("VITE_GOOGLE_CLIENT_ID")
+    
+    if is_mock:
+        logger.info(f"[Mock Drive] Simulating Google Drive upload for {display_filename}...")
+        # Simulate slight network delay
+        await asyncio.sleep(1.5)
+        mock_id = f"mock-drive-id-{uuid.uuid4().hex[:12]}"
+        mock_url = f"https://drive.google.com/file/d/{mock_id}/view?usp=drivesdk"
+        logger.info(f"[Mock Drive] Simulated upload successful. URL: {mock_url}")
+        return GoogleDriveUploadResponse(view_url=mock_url)
+        
+    try:
+        # Perform actual upload to Google Drive
+        view_url = await upload_file_to_google_drive(
+            file_path=full_file_path,
+            filename=display_filename,
+            access_token=request.access_token
+        )
+        return GoogleDriveUploadResponse(view_url=view_url)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload track to Google Drive: {str(e)}"
+        )

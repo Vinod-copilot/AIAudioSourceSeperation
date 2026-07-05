@@ -1,5 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Download, Disc, Sliders, Music, Zap } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Download, Disc, Sliders, Music, Zap, Loader2, Check, AlertCircle } from 'lucide-react';
+import { apiClient } from '../services/api';
+
+const GoogleDriveIcon = ({ size = 16 }: { size?: number }) => (
+  <svg viewBox="0 0 24 24" width={size} height={size} style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <path d="M7.71 3.5H16.29L22 13.5H13.42L7.71 3.5Z" fill="#FFD04B" />
+    <path d="M13.42 13.5H22L16.29 23.5H7.71L13.42 13.5Z" fill="#0066DA" />
+    <path d="M7.71 3.5L2 13.5L7.71 23.5L13.42 13.5L7.71 3.5Z" fill="#00A85D" />
+  </svg>
+);
 
 interface StemTrack {
   id: string;
@@ -13,9 +22,91 @@ interface MixerConsoleProps {
   stems: StemTrack[];
   originalUrl: string;
   title: string;
+  jobId: string;
 }
 
-export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, title }) => {
+export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, title, jobId }) => {
+  // Google Drive upload states per track id
+  const [driveStatus, setDriveStatus] = useState<{ [key: string]: 'idle' | 'uploading' | 'success' | 'error' }>({});
+  const [driveUrl, setDriveUrl] = useState<{ [key: string]: string }>({});
+  const [driveError, setDriveError] = useState<string | null>(null);
+
+  // Load Google Identity Services SDK if not present
+  useEffect(() => {
+    if ((window as any).google?.accounts?.oauth2) return;
+    
+    if (!document.getElementById('google-gsi-script')) {
+      const script = document.createElement('script');
+      script.id = 'google-gsi-script';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const handleGoogleDriveUpload = async (trackId: string) => {
+    // Reset track status
+    setDriveStatus(prev => ({ ...prev, [trackId]: 'uploading' }));
+    setDriveError(null);
+    
+    const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+    
+    // If client ID is missing, we are in Demo/Mock Mode
+    if (!googleClientId) {
+      console.log("[Demo Mode] Simulating Google Drive upload for track:", trackId);
+      try {
+        const res = await apiClient.uploadTrackToGoogleDrive(jobId, trackId, "mock-token");
+        setDriveUrl(prev => ({ ...prev, [trackId]: res.view_url }));
+        setDriveStatus(prev => ({ ...prev, [trackId]: 'success' }));
+      } catch (err: any) {
+        setDriveStatus(prev => ({ ...prev, [trackId]: 'error' }));
+        setDriveError(err.message || 'Failed to upload to Google Drive.');
+      }
+      return;
+    }
+    
+    // In Production Mode, trigger Google Identity OAuth2 token request
+    try {
+      const googleObj = (window as any).google;
+      if (!googleObj?.accounts?.oauth2) {
+        throw new Error('Google Identity Services SDK is not loaded. Please try again.');
+      }
+      
+      const tokenClient = googleObj.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            setDriveStatus(prev => ({ ...prev, [trackId]: 'error' }));
+            setDriveError(tokenResponse.error_description || 'Google authorization failed.');
+            return;
+          }
+          
+          if (!tokenResponse.access_token) {
+            setDriveStatus(prev => ({ ...prev, [trackId]: 'error' }));
+            setDriveError('No access token returned from Google.');
+            return;
+          }
+          
+          try {
+            // Call backend to perform upload using the access token
+            const res = await apiClient.uploadTrackToGoogleDrive(jobId, trackId, tokenResponse.access_token);
+            setDriveUrl(prev => ({ ...prev, [trackId]: res.view_url }));
+            setDriveStatus(prev => ({ ...prev, [trackId]: 'success' }));
+          } catch (err: any) {
+            setDriveStatus(prev => ({ ...prev, [trackId]: 'error' }));
+            setDriveError(err.message || 'Failed to upload to Google Drive.');
+          }
+        },
+      });
+      
+      tokenClient.requestAccessToken();
+    } catch (err: any) {
+      setDriveStatus(prev => ({ ...prev, [trackId]: 'error' }));
+      setDriveError(err.message || 'Google OAuth initialization failed.');
+    }
+  };
   // Stems audio refs
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement | null }>({});
   // Original audio ref for bypass mode
@@ -435,6 +526,24 @@ export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, 
         </div>
       </div>
 
+      {driveError && (
+        <div style={{
+          marginBottom: '1.5rem',
+          padding: '0.75rem 1rem',
+          background: 'rgba(244, 67, 54, 0.08)',
+          border: '1px solid rgba(244, 67, 54, 0.2)',
+          borderRadius: '8px',
+          color: 'var(--danger)',
+          fontSize: '0.85rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <AlertCircle size={16} />
+          <span>{driveError}</span>
+        </div>
+      )}
+
       {/* Multi-Track Channel Board */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', opacity: mixMode === 'original' ? 0.4 : 1, transition: 'opacity 0.3s ease' }}>
         {stems.map((track) => {
@@ -555,16 +664,63 @@ export const MixerConsole: React.FC<MixerConsoleProps> = ({ stems, originalUrl, 
                 </button>
               </div>
 
-              {/* Download stem button */}
-              <a
-                href={`${track.url}?download=true`}
-                className="btn btn-secondary"
-                style={{ padding: '0.5rem', borderRadius: '6px' }}
-                title={`Download ${track.label}`}
-                download
-              >
-                <Download size={14} />
-              </a>
+              {/* Actions: Google Drive & Download */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {driveStatus[track.id] === 'success' ? (
+                  <a
+                    href={driveUrl[track.id]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn"
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      background: 'rgba(0, 168, 93, 0.15)',
+                      border: '1px solid rgba(0, 168, 93, 0.3)',
+                      color: '#00a85d',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}
+                    title="View in Google Drive"
+                  >
+                    <Check size={14} />
+                    <GoogleDriveIcon size={14} />
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleGoogleDriveUpload(track.id)}
+                    disabled={driveStatus[track.id] === 'uploading'}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.5rem',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minWidth: '32px'
+                    }}
+                    title={driveStatus[track.id] === 'uploading' ? "Uploading to Google Drive..." : "Upload to Google Drive"}
+                  >
+                    {driveStatus[track.id] === 'uploading' ? (
+                      <Loader2 className="spinning" size={14} />
+                    ) : (
+                      <GoogleDriveIcon size={14} />
+                    )}
+                  </button>
+                )}
+
+                <a
+                  href={`${track.url}?download=true`}
+                  className="btn btn-secondary"
+                  style={{ padding: '0.5rem', borderRadius: '6px' }}
+                  title={`Download ${track.label}`}
+                  download
+                >
+                  <Download size={14} />
+                </a>
+              </div>
 
             </div>
           );

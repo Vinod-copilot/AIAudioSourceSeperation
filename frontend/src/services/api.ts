@@ -137,6 +137,29 @@ export const apiClient = {
   },
 
   /**
+   * Uploads a specific stem track from a job to Google Drive.
+   */
+  async uploadTrackToGoogleDrive(jobId: string, track: string, accessToken: string): Promise<{ view_url: string }> {
+    const response = await fetch(`${BASE_URL}/job/${jobId}/upload-to-drive`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        track,
+        access_token: accessToken,
+      }),
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Failed to upload track to Google Drive.');
+    }
+
+    return response.json();
+  },
+
+  /**
    * Retrieves the status of a specific job.
    */
   async getJobStatus(jobId: string): Promise<Job> {

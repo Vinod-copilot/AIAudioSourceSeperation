@@ -70,3 +70,12 @@ class JobStatusResponse(BaseModel):
     drums_ready: bool = False
     bass_ready: bool = False
     other_ready: bool = False
+
+class GoogleDriveUploadRequest(BaseModel):
+    track: str
+    access_token: str
+
+class GoogleDriveUploadResponse(BaseModel):
+    view_url: str
+    message: str = "File uploaded to Google Drive successfully"
+

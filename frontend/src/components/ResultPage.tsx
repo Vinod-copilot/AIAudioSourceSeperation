@@ -296,6 +296,7 @@ export const ResultPage: React.FC<ResultPageProps> = ({ jobId, onBack }) => {
         stems={mixerStems}
         originalUrl={originalUrl}
         title={job.filename}
+        jobId={jobId}
       />
     </div>
   );

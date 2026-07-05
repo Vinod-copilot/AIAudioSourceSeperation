@@ -68,3 +68,40 @@ def test_import_youtube_success():
         assert data["size"] == 12345
         assert "imported and converted" in data["message"]
 
+def test_upload_to_drive_job_not_found():
+    """Verify that uploading to Google Drive for a non-existent job returns 404."""
+    response = client.post(
+        "/api/job/non-existent-job/upload-to-drive",
+        json={"track": "vocals", "access_token": "mock-token"}
+    )
+    assert response.status_code == 404
+    assert "Job not found" in response.json()["detail"]
+
+def test_upload_to_drive_mock_success():
+    """Verify that uploading a track under Mock/Demo mode succeeds and returns a mock URL."""
+    from unittest.mock import patch, MagicMock
+    from app.models import Job, JobStatus
+    
+    mock_job = Job(
+        job_id="test-job-id",
+        file_id="test-file-id",
+        filename="song.mp3",
+        status=JobStatus.COMPLETED,
+        created_at="2026-07-05T12:00:00Z",
+        updated_at="2026-07-05T12:05:00Z",
+        vocals_path="uploads/test-job-id_vocals.mp3",
+        instrumental_path="uploads/test-job-id_instrumental.mp3"
+    )
+    
+    with patch("app.routes.api.job_manager.get_job", return_value=mock_job), \
+         patch("app.routes.api.storage_provider.get_file_path", return_value=MagicMock()):
+        response = client.post(
+            "/api/job/test-job-id/upload-to-drive",
+            json={"track": "vocals", "access_token": "mock-token"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "view_url" in data
+        assert "drive.google.com" in data["view_url"]
+
+
